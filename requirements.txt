@@ -9,3 +9,4 @@ Werkzeug==3.0.3
 
 numpy~=1.26.4
 opencv-python~=4.9.0.80
+eventlet~=0.36.1
