@@ -6,11 +6,12 @@ import eventlet.wsgi
 
 eventlet.monkey_patch()
 
-from flask import Flask
+from flask import Flask, request
 from flask_cors import CORS
 from flask_socketio import SocketIO
 
-from hardware.camera import Camera, cameras, convert
+from hardware.camera import Camera, cameras
+from utils.imageProcessing import convert_img_format, Masker
 
 
 class Server:
@@ -21,6 +22,7 @@ class Server:
         self.streams = {}
         self.lock = Lock()
         self.add_routes()
+        self.add_after_request()
 
     def add_routes(self):
         @self.app.route('/test')
@@ -33,7 +35,7 @@ class Server:
             if not cam:
                 return {"message": "Invalid camera name"}, 400
             frame = cam.capture_frame()
-            frame = convert(frame, file_format=".jpg")
+            frame = convert_img_format(frame, file_format=".jpg")
             frame = base64.b64encode(frame).decode('utf-8')
             return frame, 200
 
@@ -64,6 +66,27 @@ class Server:
                 else:
                     return {"message": f"Already streaming video feed for camera \"{camera_name}\""}, 200
 
+        @self.app.route('/calibrate/pucks/<camera_name>')
+        def calibrate_pucks(camera_name):
+            cam = cameras[camera_name] if camera_name in cameras else None
+            if not cam:
+                return {"error": "Invalid camera name"}, 400
+            data = request.json
+            maskers = []
+            for entry in data['maskers']:
+                h_range = entry['hRange'][0], entry['hRange'][1]
+                s_range = entry['sRange'][0], entry['sRange'][1]
+                v_range = entry['vRange'][0], entry['vRange'][1]
+                # post_processing =
+                masker = Masker(h_range, s_range, v_range)
+                maskers.append(masker)
+
+    def add_after_request(self):
+        @self.app.after_request
+        def add_header(response):
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            return response
+
     def stream_video(self, cam: Camera, camera_name: str):
         request_frequency = 10
         request_timeout = 30
@@ -73,7 +96,7 @@ class Server:
 
         while True:
             frame = cam.capture_frame()
-            frame = convert(frame, file_format=".jpg")
+            frame = convert_img_format(frame, file_format=".jpg")
             frame = base64.b64encode(frame).decode('utf-8')
             self.socketio.emit('video_feed', {'camera': camera_name, 'frame': frame})
 
@@ -89,9 +112,9 @@ class Server:
                     break
             eventlet.sleep()
 
-    def run(self, port=None, debug=False):
+    def run(self, host=None, port=None, debug=False):
         print("Starting server...")
-        self.socketio.run(self.app, port=port, debug=debug, log_output=debug, use_reloader=debug)
+        self.socketio.run(self.app, host=host, port=port, debug=debug, log_output=debug, use_reloader=debug)
 
 
 if __name__ == '__main__':

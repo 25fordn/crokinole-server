@@ -1,4 +1,5 @@
 import time
+
 import cv2
 
 
@@ -13,6 +14,7 @@ class Camera:
         self.frame_rate = frame_rate
         self.prev_time = 0
         self.prev_frame = None
+        self.process_frame = lambda frame: frame
 
     def capture_frame(self):
         curr_time = time.time()
@@ -21,16 +23,13 @@ class Camera:
         ret, frame = self.cam.read()
         if not ret:
             return self.prev_frame
+        frame = self.process_frame(frame)
         self.prev_time = curr_time
         self.prev_frame = frame
         return frame
 
     def close(self):
         self.cam.release()
-
-
-def convert(frame, file_format=".jpg"):
-    return cv2.imencode(file_format, frame)[1].tobytes()
 
 
 def initialize_cameras() -> dict[str, Camera]:
